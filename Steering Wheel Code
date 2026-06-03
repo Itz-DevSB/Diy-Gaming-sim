@@ -1,0 +1,102 @@
+#include <XInput.h>
+
+// =====================
+// ANALOG INPUTS
+// =====================
+const int steeringPin = A0;
+const int shifterPin  = A1;
+
+// =====================
+// DIGITAL INPUTS
+// =====================
+const int accelPin     = 2;
+const int brakePin     = 3;
+const int clutchPin    = 4;
+const int handbrakePin = 5;
+const int rbPin        = 6;
+
+// =====================
+// SHIFTER STATE
+// =====================
+bool upArmed   = true;
+bool downArmed = true;
+
+// =====================
+// STEERING SMOOTHING
+// =====================
+float smoothSteer = 512;
+const float alpha = 0.08;
+
+void setup() {
+  pinMode(accelPin,     INPUT_PULLUP);
+  pinMode(brakePin,     INPUT_PULLUP);
+  pinMode(clutchPin,    INPUT_PULLUP);
+  pinMode(handbrakePin, INPUT_PULLUP);
+  pinMode(rbPin,        INPUT_PULLUP);
+
+  XInput.begin();
+}
+
+void loop() {
+
+  // =====================
+  // STEERING
+  // =====================
+  int rawSteer = analogRead(steeringPin);
+  rawSteer     = constrain(rawSteer, 10, 1013);
+  smoothSteer  = (alpha * rawSteer) + ((1.0 - alpha) * smoothSteer);
+  int steer    = map((int)smoothSteer, 10, 1013, 32767, -32768);
+  XInput.setJoystickX(JOY_LEFT, steer);
+
+  // =====================
+  // PEDALS
+  // =====================
+  bool accel = digitalRead(accelPin);
+  bool brake = digitalRead(brakePin);
+  XInput.setTrigger(TRIGGER_RIGHT, accel ? 255 : 0);
+  XInput.setTrigger(TRIGGER_LEFT,  brake ? 255 : 0);
+
+  // =====================
+  // BUTTONS
+  // =====================
+  bool handbrake = !digitalRead(handbrakePin);
+  bool rb        = !digitalRead(rbPin);
+
+  if (handbrake) XInput.press(BUTTON_LB);
+  else           XInput.release(BUTTON_LB);
+
+  if (rb) XInput.press(BUTTON_RB);
+  else    XInput.release(BUTTON_RB);
+
+  // =====================
+  // SHIFTER (L3 = up, R3 = down)
+  // =====================
+  int  shifter = analogRead(shifterPin);
+  bool clutch  = digitalRead(clutchPin);
+
+  // SHIFT UP (low value) → L3 button pulse
+  if (clutch && shifter <= 5 && upArmed) {
+    XInput.press(BUTTON_L3);
+    XInput.send();
+    delay(50);
+    XInput.release(BUTTON_L3);
+    upArmed = false;
+  }
+  if (shifter > 5) upArmed = true;
+
+  // SHIFT DOWN (high value) → R3 button pulse
+  if (clutch && shifter >= 820 && downArmed) {
+    XInput.press(BUTTON_R3);
+    XInput.send();
+    delay(50);
+    XInput.release(BUTTON_R3);
+    downArmed = false;
+  }
+  if (shifter < 820) downArmed = true;
+
+  // =====================
+  // SEND
+  // =====================
+  XInput.send();
+  delay(5);
+}
